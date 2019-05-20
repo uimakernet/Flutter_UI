@@ -7,6 +7,7 @@
 	  flutter_ui:
 	    git:
 	      url: http://10.10.15.98/xiekun/FlutterUI.git
+	      ref: v1.1.1
 
 
 
