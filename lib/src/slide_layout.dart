@@ -44,7 +44,11 @@ class _SlideLayoutState extends State<SlideLayout>
       onPanEnd: handlePanEnd,
       child: Stack(
         children: <Widget>[
-          widget.background,
+          Align(
+            alignment: getBackgroundAlignment(widget.slideDirection),
+            child: buildBackgroundContainer(
+                widget.slideDirection, widget.background),
+          ),
           Transform.translate(
             child: widget.foreground,
             offset: _slideOffset,
@@ -180,5 +184,33 @@ class _SlideLayoutState extends State<SlideLayout>
 //      debugPrint('offsetX:$value');
       _slideOffset = isHorizontal ? Offset(value, 0) : Offset(0, value);
     });
+  }
+
+  Alignment getBackgroundAlignment(AxisDirection direction) {
+    switch (direction) {
+      case AxisDirection.left:
+        return Alignment.centerLeft;
+      case AxisDirection.right:
+        return Alignment.centerRight;
+      case AxisDirection.up:
+        return Alignment.topCenter;
+      case AxisDirection.down:
+        return Alignment.bottomCenter;
+      default:
+        return Alignment.centerRight;
+    }
+  }
+
+  buildBackgroundContainer(AxisDirection direction, Widget background) {
+    Size size;
+    if (direction == AxisDirection.left || direction == AxisDirection.right) {
+      size = Size.fromWidth(widget.limit);
+    } else {
+      size = Size.fromHeight(widget.limit);
+    }
+    return SizedBox.fromSize(
+      size: size,
+      child: background,
+    );
   }
 }

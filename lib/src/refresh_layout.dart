@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_ui/src/tweens.dart';
+import 'dart:math';
 
 enum RefreshState {
   //正常状态
@@ -22,17 +23,24 @@ enum PullDirection {
   IDLE,
 }
 
+enum RefreshMode { TOP, BOTTOM, BOTH }
+
 class RefreshLayout extends StatefulWidget {
   final RefreshBodyBuilder headerBuilder;
   final RefreshBodyBuilder footerBuilder;
   final RefreshCallback onRefresh;
   final RefreshCallback onLoadMore;
+  final Widget child;
+  final RefreshMode refreshMode;
 
-  RefreshLayout(
-      {@required this.onRefresh,
-      @required this.onLoadMore,
-      this.headerBuilder = const DefaultRefreshBodyBuilder(true),
-      this.footerBuilder = const DefaultRefreshBodyBuilder(false)});
+  RefreshLayout({
+    @required this.child,
+    this.onRefresh,
+    this.onLoadMore,
+    this.headerBuilder = const DefaultTopRefreshBodyBuilder(),
+    this.footerBuilder = const DefaultBottomRefreshBodyBuilder(),
+    this.refreshMode = RefreshMode.BOTH,
+  });
 
   @override
   _RefreshLayoutState createState() => _RefreshLayoutState();
@@ -59,6 +67,15 @@ class _RefreshLayoutState extends State<RefreshLayout>
   @override
   void initState() {
     super.initState();
+    assert(() {
+      if (widget.child is ScrollView &&
+          (widget.child as ScrollView).physics is ClampingScrollPhysics) {
+        return true;
+      } else {
+        throw FlutterError(
+            'RefreshLayout: child must be subclass of ScrollView and physics must be ClampingScrollPhysics');
+      }
+    }());
     _controller =
         AnimationController(vsync: this, duration: Duration(milliseconds: 300));
   }
@@ -71,10 +88,10 @@ class _RefreshLayoutState extends State<RefreshLayout>
         _pullDirection == PullDirection.UP ? _overScrollOffset.dy.abs() : 0;
     return Stack(
       children: <Widget>[
-        widget.headerBuilder.buildTip(_state, topHeight),
+        widget.headerBuilder.build(_state, topHeight),
         Align(
           alignment: Alignment.bottomCenter,
-          child: widget.footerBuilder.buildTip(_state, bottomHeight),
+          child: widget.footerBuilder.build(_state, bottomHeight),
         ),
         Transform.translate(
           offset: _overScrollOffset,
@@ -82,23 +99,11 @@ class _RefreshLayoutState extends State<RefreshLayout>
             onNotification: handleScrollNotification,
             child: DecoratedBox(
               decoration: BoxDecoration(color: Colors.grey[100]),
-              child: ListView.builder(
-                itemBuilder: buildItem,
-                itemCount: 30,
-              ),
+              child: widget.child,
             ),
           ),
         )
       ],
-    );
-  }
-
-  Widget buildItem(BuildContext context, int index) {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(15),
-        child: Text('item $index'),
-      ),
     );
   }
 
@@ -112,17 +117,19 @@ class _RefreshLayoutState extends State<RefreshLayout>
     }
     if (notification is OverscrollNotification) {
       if (notification.velocity == 0 && notification.dragDetails != null) {
-        //上下拉状态
-        setState(() {
-          double factor = 1; //阻尼因子
-          if (_overScrollOffset.dy.abs() > 0) {
-            factor -= _overScrollOffset.dy.abs() / _scrollLimit;
-          }
-          _overScrollOffset = _overScrollOffset.translate(
-              0, notification.dragDetails.delta.dy * factor);
-          //debugPrint('factor--:$factor----_overScrollOffset:$_overScrollOffset');
-          _updatePullRefreshState();
-        });
+        if (canRefresh(notification)) {
+          //上下拉状态
+          setState(() {
+            double factor = 1; //阻尼因子
+            if (_overScrollOffset.dy.abs() > 0) {
+              factor -= _overScrollOffset.dy.abs() / _scrollLimit;
+            }
+            _overScrollOffset = _overScrollOffset.translate(
+                0, notification.dragDetails.delta.dy * factor);
+            //debugPrint('factor--:$factor----_overScrollOffset:$_overScrollOffset');
+            _updatePullRefreshState();
+          });
+        }
       }
     }
     if (notification is ScrollEndNotification) {
@@ -234,41 +241,135 @@ class _RefreshLayoutState extends State<RefreshLayout>
       }
     });
   }
+
+  bool canRefresh(OverscrollNotification notification) {
+    switch (widget.refreshMode) {
+      case RefreshMode.TOP:
+        return notification.dragDetails.delta.dy > 0;
+      case RefreshMode.BOTTOM:
+        return notification.dragDetails.delta.dy < 0;
+      default:
+        return true;
+    }
+  }
 }
 
 abstract class RefreshBodyBuilder {
-  Widget buildTip(RefreshState state, double height);
+  Widget build(RefreshState state, double height);
+
+  bool isHeader();
 }
 
-class DefaultRefreshBodyBuilder implements RefreshBodyBuilder{
-  final bool _isHeader;
-
-  const DefaultRefreshBodyBuilder(this._isHeader);
+abstract class DefaultRefreshBodyBuilder implements RefreshBodyBuilder {
+  const DefaultRefreshBodyBuilder();
 
   String getTintText(RefreshState state) {
     switch (state) {
       case RefreshState.NORMAL:
       case RefreshState.PULL:
-        return _isHeader ? '下拉刷新' : '上拉加载';
+        return isHeader() ? '下拉刷新' : '上拉加载';
       case RefreshState.RELEASE_TO_REFRESH:
-        return _isHeader ? '释放刷新' : '释放加载';
+        return isHeader() ? '释放刷新' : '释放加载';
       case RefreshState.REFRESHING:
-        return _isHeader ? '刷新中' : '加载中';
+        return isHeader() ? '刷新中' : '加载中';
       case RefreshState.REFRESH_COMPLETE:
-        return _isHeader ? '刷新完成' : '加载完成';
+        return isHeader() ? '刷新完成' : '加载完成';
       default:
-        return _isHeader ? '下拉刷新' : '上拉加载';
+        return isHeader() ? '下拉刷新' : '上拉加载';
         break;
     }
   }
 
   @override
-  Widget buildTip(RefreshState state, double height) {
+  Widget build(RefreshState state, double height) {
+    return DefaultRefreshBody(state, height, getTintText(state));
+  }
+}
+
+class DefaultTopRefreshBodyBuilder extends DefaultRefreshBodyBuilder {
+  const DefaultTopRefreshBodyBuilder();
+
+  @override
+  bool isHeader() => true;
+}
+
+class DefaultBottomRefreshBodyBuilder extends DefaultRefreshBodyBuilder {
+  const DefaultBottomRefreshBodyBuilder();
+
+  @override
+  bool isHeader() => false;
+}
+
+class DefaultRefreshBody extends StatefulWidget {
+  final RefreshState state;
+  final double height;
+  final String tintText;
+
+  DefaultRefreshBody(this.state, this.height, this.tintText);
+
+  @override
+  _DefaultRefreshBodyState createState() => _DefaultRefreshBodyState();
+}
+
+class _DefaultRefreshBodyState extends State<DefaultRefreshBody>
+    with TickerProviderStateMixin {
+  AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      lowerBound: 0,
+      upperBound: pi * 2,
+      duration: Duration(seconds: 1),
+    );
+    _controller.addListener(() {
+      setState(() {});
+    });
+    if (widget.state == RefreshState.RELEASE_TO_REFRESH) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(DefaultRefreshBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.state == RefreshState.RELEASE_TO_REFRESH) {
+      _controller.repeat();
+    } else if (widget.state == RefreshState.REFRESH_COMPLETE) {
+      _controller.stop();
+      _controller.reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      height: height,
-      color: Colors.blueGrey,
+      height: widget.height,
+      color: Colors.white70,
       alignment: Alignment.center,
-      child: Text(getTintText(state)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Transform.rotate(
+              angle:
+                  widget.state == RefreshState.REFRESHING && _controller != null
+                      ? _controller.value
+                      : -widget.height,
+              child: Image.asset(
+                'images/refresh_loading.png',
+                package: 'flutter_ui',
+                width: 28,
+                height: 28,
+              ),
+            ),
+          ),
+          Text(widget.tintText),
+        ],
+      ),
     );
   }
 }
