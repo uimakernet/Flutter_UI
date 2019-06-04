@@ -344,6 +344,12 @@ class _DefaultRefreshBodyState extends State<DefaultRefreshBody>
   }
 
   @override
+  void dispose() {
+    super.dispose();
+    _controller?.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       height: widget.height,

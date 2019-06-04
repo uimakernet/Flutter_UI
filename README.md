@@ -7,7 +7,7 @@
 	  flutter_ui:
 	    git:
 	      url: http://10.10.15.98/xiekun/FlutterUI.git
-	      ref: v1.1.1
+	      ref: v1.1.2
 
 
 
@@ -98,3 +98,21 @@
 	    );
 	  }
 	}
+	
+	
+### AnimatedWaveProgress 圆形波浪进度控件 ###
+预览：
+
+![](preview/1.gif)
+
+
+使用方式：
+
+	AnimatedWaveProgress(
+      value: value,
+      waveColor: Colors.redAccent,
+      lightWaveColor: Colors.redAccent[100],
+      circleProgressColor: Colors.blue,
+      circleProgressBGColor: Colors.blueGrey,
+      progressAnimatedDuration: Duration(milliseconds: 2000),
+    )
